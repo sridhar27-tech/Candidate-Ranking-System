@@ -2,6 +2,7 @@ from fastapi import FastAPI, Body, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 
+# Base data parsing models
 from app.schemas import CandidateModel
 from app.stage_1_skills import evaluate_semantic_skills
 from app.stage_2_behavioral import evaluate_behavioral_star
@@ -9,12 +10,13 @@ from app.stage_3_signals import calculate_platform_signals
 
 # MongoDB Connection & Validation Imports
 from app.db import get_leaderboard_collection
-from app.models import LeaderboardSessionDocument, StoredRankingItem
+from app.models import LeaderboardSessionDocument
 
 from typing import List
 
-app = FastAPI(title="Talent Context Ranker API (MongoDB)")
+app = FastAPI(title="Talent Context Ranker API (MongoDB Optimized)")
 
+# Enable CORS for frontend dashboard communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,24 +27,26 @@ app.add_middleware(
 
 async def _execute_and_serialize_pipeline(job_description: str, candidates: List[CandidateModel]) -> List[dict]:
     """
-    Executes the 3-stage ranking logic across all candidates and returns standard dictionaries.
+    Executes the 3-stage ranking logic across all candidates, aggregates
+    scores using the composite matrix weights, and returns a sorted list of dictionaries.
     """
     results = []
     for candidate in candidates:
-        # Phase 1: Native C++ Core Module
+        # Phase 1: Native C++ Core Module (Semantic Skill Matrix)
         semantic_score = evaluate_semantic_skills(job_description, candidate.skills)
         
-        # Phase 2: Local Ollama STAR Evaluation Engine
+        # Phase 2: Local Ollama STAR Narrative Evaluation Engine
         behavioral_score, ai_reasoning = evaluate_behavioral_star(
             job_description, 
             candidate.profile, 
             candidate.career_history
         )
         
-        # Phase 3: Platform Telemetry Signal Evaluation
+        # Phase 3: Platform Telemetry & Availability Signal Evaluation
         platform_score = calculate_platform_signals(candidate.redrob_signals)
         
-        # Comprehensive Aggregated Weight Matrix Logic Matrix Calculation
+        # Comprehensive Aggregated Weight Matrix Logic Calculation:
+        # 40% Matrix Skills Match + 40% STAR Contextual Alignment + 20% Intent/Availability Signals
         composite_score = (semantic_score * 0.40) + (behavioral_score * 0.40) + (platform_score * 0.20)
         
         results.append({
@@ -56,7 +60,7 @@ async def _execute_and_serialize_pipeline(job_description: str, candidates: List
             "ai_justification": ai_reasoning
         })
         
-    # Order rankings directly by best score prior to returning
+    # Order rankings cleanly based on highest final leaderboard score priority
     results.sort(key=lambda x: x["final_score"], reverse=True)
     return results
 
@@ -67,20 +71,24 @@ async def evaluate_candidates(
     candidates: List[CandidateModel] = Body(...),
     collection = Depends(get_leaderboard_collection)
 ):
-    session_id = str(uuid.uuid4())[:8]  # Quick short tracking signature
+    """
+    Triggers the complete AI ranking pipeline, persists the deep evaluation 
+    data into MongoDB, and returns a unique, secure session_id tracking slug.
+    """
+    # Generate a cryptographically secure, unguessable tracking signature
+    session_id = str(uuid.uuid4())
     
-    # 1. Run evaluation matrix
+    # 1. Run evaluation matrix calculations
     processed_rankings = await _execute_and_serialize_pipeline(job_description, candidates)
     
-    # 2. Build the BSON Document schema object
+    # 2. Build the Document schema structure matching MongoDB storage contract
     session_doc = LeaderboardSessionDocument(
         session_id=session_id,
         total_processed=len(processed_rankings),
         rankings=processed_rankings
     )
     
-    # 3. Perform an async atomic write to Mongo
-    # .dict() exports clean nested JSON directly to the collection
+    # 3. Perform an atomic async write to MongoDB (.dict() handles nested json parsing)
     await collection.insert_one(session_doc.dict())
     
     return {
@@ -91,26 +99,57 @@ async def evaluate_candidates(
     }
 
 
+# =====================================================================
+# OPTIMIZED DATABASE PROJECTION ENDPOINTS (SOLUTION 1)
+# =====================================================================
+
 @app.get("/api/rank/leaderboard/{session_id}")
 async def get_stored_leaderboard(
     session_id: str, 
     collection = Depends(get_leaderboard_collection)
 ):
     """
-    Fetches the persistent JSON object straight from MongoDB.
-    Bypasses C++ computational layers and local LLM runtime delays completely.
+    Optimized Summary Endpoint: Fetches the candidate roster layout 
+    WITHOUT the heavy text paragraphs. Perfect for lightning-fast table renders.
     """
-    # Async match projection to locate session array footprint
-    document = await collection.find_one({"session_id": session_id})
+    # MongoDB Projection: Setting "rankings.ai_justification": 0 tells the database 
+    # to omit the long 7-8 lines of text from disk/network transmission entirely.
+    document = await collection.find_one(
+        {"session_id": session_id},
+        projection={"_id": 0, "rankings.ai_justification": 0}
+    )
     
     if not document:
         raise HTTPException(status_code=404, detail="Leaderboard execution signature not found.")
         
+    return document
+
+
+@app.get("/api/rank/leaderboard/{session_id}/candidate/{candidate_id}/justification")
+async def get_candidate_justification(
+    session_id: str,
+    candidate_id: str,
+    collection = Depends(get_leaderboard_collection)
+):
+    """
+    Deep-Dive Detail Endpoint: Fetches ONLY the 7-8 line text block for 
+    a specific candidate when a recruiter clicks their card or 'View Details'.
+    """
+    # Find the matching session document and use MongoDB's '$elemMatch' projection
+    # to extract ONLY the targeted candidate's array element out of the database.
+    document = await collection.find_one(
+        {"session_id": session_id, "rankings.candidate_id": candidate_id},
+        projection={"_id": 0, "rankings.$": 1}
+    )
+    
+    if not document or "rankings" not in document:
+        raise HTTPException(status_code=404, detail="Candidate or Session matching signature not found.")
+        
+    # Extract the nested paragraph text from the single matching array slice
+    target_candidate = document["rankings"][0]
     return {
-        "status": "success",
-        "session_id": document["session_id"],
-        "total_processed": document["total_processed"],
-        "rankings": document["rankings"]
+        "candidate_id": candidate_id,
+        "ai_justification": target_candidate.get("ai_justification", "No justification recorded.")
     }
 
 
