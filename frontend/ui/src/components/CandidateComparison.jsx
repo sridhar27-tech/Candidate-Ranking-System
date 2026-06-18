@@ -183,7 +183,7 @@ const CandidateComparison = ({ candidate1, candidate2 }) => {
                 key={idx} 
                 className={`skill-badge ${candidate2.skills.includes(skill) ? 'common' : 'unique'}`}
               >
-                {candidate2.skills.includes(skill) && <FiCheck className="check-icon" />}
+                {candidate2.skills.includes(skill) && <FiCheck className="skill-check-icon" />}
                 {skill}
               </span>
             ))}
@@ -194,7 +194,7 @@ const CandidateComparison = ({ candidate1, candidate2 }) => {
                 key={idx} 
                 className={`skill-badge ${candidate1.skills.includes(skill) ? 'common' : 'unique'}`}
               >
-                {candidate1.skills.includes(skill) && <FiCheck className="check-icon" />}
+                {candidate1.skills.includes(skill) && <FiCheck className="skill-check-icon" />}
                 {skill}
               </span>
             ))}

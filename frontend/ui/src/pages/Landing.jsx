@@ -1,32 +1,60 @@
-// Landing Page - Main entry point for RedRob AI Recruiter
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiUpload, FiPlay, FiArrowRight, FiCheck } from 'react-icons/fi';
+import { FiUpload, FiPlay, FiArrowRight, FiCheck, FiFileText, FiX, FiRefreshCw } from 'react-icons/fi';
 import api from '../services/api';
 
 const Landing = () => {
   const navigate = useNavigate();
+  const jdInputRef = useRef(null);
+  const resumeInputRef = useRef(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState({ jd: false, resumes: false });
   const [jdText, setJdText] = useState(null);
+  const [jdFileName, setJdFileName] = useState('');
+  const [resumeCount, setResumeCount] = useState(0);
 
-  const handleJDUpload = async (e) => {
-    e.preventDefault();
-    // Simulate file upload
-    const result = await api.uploadJobDescription([{}]);
-    if (result.success) {
-      setUploadStatus(prev => ({ ...prev, jd: true }));
-      setJdText(result.data.description);
-    }
+  const handleJDUploadClick = () => {
+    jdInputRef.current?.click();
   };
 
-  const handleResumeUpload = async (e) => {
-    e.preventDefault();
-    // Simulate file upload
-    const result = await api.uploadResumes([{}, {}, {}]);
-    if (result.success) {
-      setUploadStatus(prev => ({ ...prev, resumes: true }));
-    }
+  const handleJDFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result;
+      if (text) {
+        setJdText(text);
+        setJdFileName(file.name);
+        setUploadStatus(prev => ({ ...prev, jd: true }));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleResumeUploadClick = () => {
+    resumeInputRef.current?.click();
+  };
+
+  const handleResumeFileChange = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setResumeCount(files.length);
+    setUploadStatus(prev => ({ ...prev, resumes: true }));
+  };
+
+  const clearJD = () => {
+    setJdText(null);
+    setJdFileName('');
+    setUploadStatus(prev => ({ ...prev, jd: false }));
+    if (jdInputRef.current) jdInputRef.current.value = '';
+  };
+
+  const clearResumes = () => {
+    setResumeCount(0);
+    setUploadStatus(prev => ({ ...prev, resumes: false }));
+    if (resumeInputRef.current) resumeInputRef.current.value = '';
   };
 
   const handleStartAnalysis = async () => {
@@ -49,21 +77,21 @@ const Landing = () => {
 
   return (
     <div className="landing-page">
-      {/* Hero Section */}
+
       <section className="hero-section">
         <div className="hero-content">
           <div className="hero-badge">
             <span className="badge-icon">🚀</span>
             <span>AI-Powered Recruitment</span>
           </div>
-          
+
           <h1 className="hero-title">
             Hire Better Candidates with{' '}
             <span className="gradient-text">AI Intelligence</span>
           </h1>
-          
+
           <p className="hero-subtitle">
-            Traditional ATS systems reject 75% of qualified candidates based on keyword matching. 
+            Traditional ATS systems reject 75% of qualified candidates based on keyword matching.
             RedRob uses advanced AI to understand context, skills, and potential — not just keywords.
           </p>
 
@@ -72,12 +100,12 @@ const Landing = () => {
               <span className="stat-value">94%</span>
               <span className="stat-label">Accuracy</span>
             </div>
-            <div className="stat-divider"></div>
+            <div className="stat-divider" />
             <div className="stat-item">
               <span className="stat-value">3x</span>
               <span className="stat-label">Faster Hiring</span>
             </div>
-            <div className="stat-divider"></div>
+            <div className="stat-divider" />
             <div className="stat-item">
               <span className="stat-value">+29</span>
               <span className="stat-label">Avg Score Boost</span>
@@ -110,7 +138,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* How It Works Section */}
       <section className="how-it-works">
         <h2 className="section-title">How It Works</h2>
         <div className="steps-grid">
@@ -141,7 +168,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Upload Section */}
       <section className="upload-section">
         <h2 className="section-title">Get Started</h2>
         <div className="upload-container">
@@ -150,22 +176,49 @@ const Landing = () => {
               <FiUpload className="upload-icon" />
               <h3>Job Description</h3>
             </div>
-            <div 
+            <div
               className={`upload-area ${uploadStatus.jd ? 'uploaded' : ''}`}
-              onClick={handleJDUpload}
+              onClick={handleJDUploadClick}
             >
               {uploadStatus.jd ? (
                 <>
                   <FiCheck className="check-icon" />
                   <span>Job Description Uploaded</span>
+                  <span className="upload-hint">{jdFileName}</span>
                 </>
               ) : (
                 <>
+                  <FiFileText className="upload-big-icon" />
                   <span>Click to upload job description</span>
-                  <span className="upload-hint">PDF, DOC, DOCX</span>
+                  <span className="upload-hint">Supports .txt, .pdf, .docx</span>
                 </>
               )}
             </div>
+            <input
+              ref={jdInputRef}
+              type="file"
+              accept=".txt,.pdf,.docx,.doc"
+              onChange={handleJDFileChange}
+              style={{ display: 'none' }}
+            />
+            {uploadStatus.jd && (
+              <div className="jd-preview">
+                <div className="jd-preview-header">
+                  <FiFileText className="jd-preview-icon" />
+                  <span className="jd-preview-filename">{jdFileName}</span>
+                  <button className="jd-clear-btn" onClick={clearJD} title="Remove file">
+                    <FiX />
+                  </button>
+                </div>
+                <textarea
+                  className="jd-textarea"
+                  value={jdText || ''}
+                  onChange={(e) => setJdText(e.target.value)}
+                  placeholder="Job description content..."
+                  rows={6}
+                />
+              </div>
+            )}
           </div>
 
           <div className="upload-card">
@@ -173,33 +226,53 @@ const Landing = () => {
               <FiUpload className="upload-icon" />
               <h3>Candidate Resumes</h3>
             </div>
-            <div 
+            <div
               className={`upload-area ${uploadStatus.resumes ? 'uploaded' : ''}`}
-              onClick={handleResumeUpload}
+              onClick={handleResumeUploadClick}
             >
               {uploadStatus.resumes ? (
                 <>
                   <FiCheck className="check-icon" />
-                  <span>Resumes Uploaded</span>
+                  <span>{resumeCount} Resume{resumeCount > 1 ? 's' : ''} Uploaded</span>
                 </>
               ) : (
                 <>
+                  <FiUpload className="upload-big-icon" />
                   <span>Click to upload resumes</span>
                   <span className="upload-hint">Multiple files supported</span>
                 </>
               )}
             </div>
+            <input
+              ref={resumeInputRef}
+              type="file"
+              accept=".txt,.pdf,.docx,.doc"
+              multiple
+              onChange={handleResumeFileChange}
+              style={{ display: 'none' }}
+            />
+            {uploadStatus.resumes && (
+              <div className="jd-preview">
+                <div className="jd-preview-header">
+                  <FiFileText className="jd-preview-icon" />
+                  <span className="jd-preview-filename">{resumeCount} file{resumeCount > 1 ? 's' : ''} selected</span>
+                  <button className="jd-clear-btn" onClick={clearResumes} title="Remove files">
+                    <FiRefreshCw />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        <button 
+        <button
           className={`start-analysis-btn ${(!uploadStatus.jd || !uploadStatus.resumes) ? 'disabled' : ''}`}
           onClick={handleStartAnalysis}
           disabled={!uploadStatus.jd || !uploadStatus.resumes || isAnalyzing}
         >
           {isAnalyzing ? (
             <>
-              <span className="loading-spinner"></span>
+              <span className="loading-spinner" />
               Analyzing with AI...
             </>
           ) : (
@@ -212,7 +285,6 @@ const Landing = () => {
         </button>
       </section>
 
-      {/* Features Section */}
       <section className="features-section">
         <h2 className="section-title">Why RedRob AI?</h2>
         <div className="features-grid">
@@ -249,7 +321,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* CTA Section */}
       <section className="cta-section">
         <h2>Ready to Transform Your Hiring?</h2>
         <p>Join companies that are making smarter hiring decisions with AI.</p>
