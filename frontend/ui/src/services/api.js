@@ -2,7 +2,7 @@
 // This service handles all data operations and connects to the FastAPI backend
 
 import { sampleJobDescription } from '../data/mockCandidates';
-import candidateData from '../../../../backend/data/candidate.json';
+import candidateData from '../../../../backend/data/candidate.jsonl';
 
 const BASE_URL = 'http://localhost:8000';
 
@@ -187,36 +187,60 @@ export const uploadResumes = async (files) => {
 };
 
 /**
- * Run AI analysis (real connection to backend)
+ * Run AI analysis — full two-step pipeline:
+ * 1. POST docx file to /api/jd/parse → get structured JD JSON + evaluation_text
+ * 2. POST structured job_description object + all candidates to /api/rank/evaluate
+ *
+ * @param {File} jdFile - The raw .docx File object from the file input
  */
-export const runAIAnalysis = async (jobDescriptionText, candidatesList) => {
-  const jd = jobDescriptionText || sampleJobDescription.description;
-  
-  // Directly use the imported candidate data from backend
-  const formattedCandidates = importedCandidatesList;
+export const runAIAnalysis = async (jdFile) => {
+  // ── Step 1: Parse the .docx into structured JSON ────────────────────────
+  if (!jdFile) {
+    throw new Error('No job description file provided.');
+  }
 
-  const response = await fetch(`${BASE_URL}/api/rank/evaluate`, {
+  const formData = new FormData();
+  formData.append('file', jdFile);
+
+  const parseResponse = await fetch(`${BASE_URL}/api/jd/parse`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      job_description: jd,
-      candidates: formattedCandidates
-    })
+    body: formData,
+    // Do NOT set Content-Type header — browser sets multipart boundary automatically
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
+  if (!parseResponse.ok) {
+    const errText = await parseResponse.text();
+    throw new Error(`Failed to parse job description: ${errText}`);
+  }
+
+  const parseResult = await parseResponse.json();
+  // parseResult = { parsed_jd: { job_title, department, ... }, evaluation_text: "..." }
+  const parsedJD = parseResult.parsed_jd;
+
+  // ── Step 2: Evaluate all candidates against the structured JD ────────────
+  const formattedCandidates = importedCandidatesList;
+
+  const evaluateResponse = await fetch(`${BASE_URL}/api/rank/evaluate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      job_description: parsedJD,   // structured object — backend calls .to_evaluation_text() internally
+      candidates: formattedCandidates,
+    }),
+  });
+
+  if (!evaluateResponse.ok) {
+    const errText = await evaluateResponse.text();
     throw new Error(`Failed to evaluate candidates: ${errText}`);
   }
 
-  const result = await response.json();
+  const result = await evaluateResponse.json();
   return {
     success: true,
     session_id: result.session_id,
     analyzedCount: result.total_processed,
-    rankings: result.rankings
+    rankings: result.rankings,
+    parsedJD,            // expose so Landing can display parsed title/dept if needed
   };
 };
 

@@ -9,9 +9,10 @@ const Landing = () => {
   const resumeInputRef = useRef(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadStatus, setUploadStatus] = useState({ jd: false, resumes: false });
-  const [jdText, setJdText] = useState(null);
+  const [jdFile, setJdFile] = useState(null);       // raw File object — do NOT read as text
   const [jdFileName, setJdFileName] = useState('');
   const [resumeCount, setResumeCount] = useState(0);
+  const [parsedJDTitle, setParsedJDTitle] = useState('');
 
   const handleJDUploadClick = () => {
     jdInputRef.current?.click();
@@ -20,17 +21,10 @@ const Landing = () => {
   const handleJDFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target?.result;
-      if (text) {
-        setJdText(text);
-        setJdFileName(file.name);
-        setUploadStatus(prev => ({ ...prev, jd: true }));
-      }
-    };
-    reader.readAsText(file);
+    // Store the raw File object — .docx is a zip binary, don't read as text
+    setJdFile(file);
+    setJdFileName(file.name);
+    setUploadStatus(prev => ({ ...prev, jd: true }));
   };
 
   const handleResumeUploadClick = () => {
@@ -45,8 +39,9 @@ const Landing = () => {
   };
 
   const clearJD = () => {
-    setJdText(null);
+    setJdFile(null);
     setJdFileName('');
+    setParsedJDTitle('');
     setUploadStatus(prev => ({ ...prev, jd: false }));
     if (jdInputRef.current) jdInputRef.current.value = '';
   };
@@ -60,8 +55,9 @@ const Landing = () => {
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     try {
-      const result = await api.runAIAnalysis(jdText);
+      const result = await api.runAIAnalysis(jdFile);
       if (result.success && result.session_id) {
+        if (result.parsedJD?.job_title) setParsedJDTitle(result.parsedJD.job_title);
         setIsAnalyzing(false);
         navigate(`/dashboard?session=${result.session_id}`);
       } else {
@@ -210,13 +206,9 @@ const Landing = () => {
                     <FiX />
                   </button>
                 </div>
-                <textarea
-                  className="jd-textarea"
-                  value={jdText || ''}
-                  onChange={(e) => setJdText(e.target.value)}
-                  placeholder="Job description content..."
-                  rows={6}
-                />
+                <p style={{ margin: '8px 0 0', fontSize: '0.82rem', color: 'var(--text-muted, #8892a4)', padding: '0 4px' }}>
+                  ✓ Ready — the backend will parse this file when you start analysis.
+                </p>
               </div>
             )}
           </div>
@@ -266,9 +258,9 @@ const Landing = () => {
         </div>
 
         <button
-          className={`start-analysis-btn ${(!uploadStatus.jd || !uploadStatus.resumes) ? 'disabled' : ''}`}
+          className={`start-analysis-btn ${!uploadStatus.jd ? 'disabled' : ''}`}
           onClick={handleStartAnalysis}
-          disabled={!uploadStatus.jd || !uploadStatus.resumes || isAnalyzing}
+          disabled={!uploadStatus.jd || isAnalyzing}
         >
           {isAnalyzing ? (
             <>
