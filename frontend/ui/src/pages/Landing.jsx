@@ -19,17 +19,25 @@ import {
 import AnalysisLoadingScreen from "../components/AnalysisLoadingScreen";
 import api from "../services/api";
 
+const previewCandidates = [
+  { name: "Alexandra Chen", score: 94 },
+  { name: "Marcus Williams", score: 88 },
+  { name: "Priya Kapoor", score: 81 },
+  { name: "James Liu", score: 74 },
+  { name: "Sarah O'Brien", score: 67 },
+];
+
 const Landing = () => {
   const navigate = useNavigate();
   const jdInputRef = useRef(null);
-  const resumeInputRef = useRef(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState({ jd: false, resumes: false });
-  const [jdFile, setJdFile] = useState(null);       // raw File object sent to backend
+  const [uploadStatus, setUploadStatus] = useState({ jd: false });
+  const [jdFile, setJdFile] = useState(null);
   const [jdFileName, setJdFileName] = useState("");
-
-  // ── File handlers ──────────────────────────────────────────────────────────
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusDetail, setStatusDetail] = useState("");
+  const [statusProgress, setStatusProgress] = useState(null);
 
   const handleJDUploadClick = () => jdInputRef.current?.click();
 
@@ -38,75 +46,111 @@ const Landing = () => {
     if (!file) return;
     setJdFile(file);
     setJdFileName(file.name);
-    setUploadStatus((prev) => ({ ...prev, jd: true }));
+    setUploadStatus({ jd: true });
   };
 
-  const clearJD = () => {
+  const clearJD = (e) => {
+    e.stopPropagation();
     setJdFile(null);
     setJdFileName("");
-    setUploadStatus((prev) => ({ ...prev, jd: false }));
+    setUploadStatus({ jd: false });
     if (jdInputRef.current) jdInputRef.current.value = "";
   };
 
-  // ── Analysis trigger ───────────────────────────────────────────────────────
+  // Maps backend stage keys → human-readable status messages
+  const STAGE_LABELS = {
+    jd_input:      "JD input received",
+    jd_parsed:     "JSON response received",
+    starting:      "Starting analysis…",
+    stage1:        "Stage 1 operation started — Skill scoring",
+    stage1_done:   "Stage 1 complete — Top candidates shortlisted",
+    stage2_3:      "Stage 2 & 3 operation started — Behavioral & platform evaluation",
+    insights:      "Assigning AI reasoning insights…",
+    complete:      "Process complete",
+  };
 
   const handleStartAnalysis = async () => {
     if (!jdFile) {
-      alert("Please upload a Job Description (.docx) file first.");
+      alert("Upload a .docx job description first.");
       return;
     }
     setIsAnalyzing(true);
+    setStatusMessage("JD input received");
+    setStatusDetail("Uploading and parsing job description…");
+    setStatusProgress(2);
+
     try {
-      // runAIAnalysis is a real async promise — it only resolves once the backend
-      // finishes parsing the JD, runs the full cascade funnel, and returns top-100.
-      const result = await api.runAIAnalysis(jdFile);
+      const result = await api.runAIAnalysis(
+        jdFile,
+        (jobId) => {
+          // Called as soon as job_id is generated (before ranking starts)
+          setStatusMessage("JSON response received");
+          setStatusDetail("Job description parsed successfully");
+          setStatusProgress(5);
+        },
+        (snap) => {
+          // Called on each SSE progress update from the background ranking
+          const label = STAGE_LABELS[snap.stage] || snap.stage || "Processing…";
+          setStatusMessage(label);
+          setStatusDetail(snap.detail || "");
+          setStatusProgress(snap.pct ?? null);
+        }
+      );
+
       if (result.success && result.session_id) {
-        // Stop loading animation first, then navigate.
-        // Pass rankings in router state so Dashboard renders immediately
-        // without a second network round-trip to /api/rank/leaderboard.
-        setIsAnalyzing(false);
+        setStatusMessage("Process complete");
+        setStatusProgress(100);
+
+        // Brief pause so user sees "Process complete"
+        await new Promise((r) => setTimeout(r, 800));
+
         navigate(`/dashboard?session=${result.session_id}`, {
           state: {
-            rankings:     result.rankings,
+            rankings: result.rankings,
             analyzedCount: result.analyzedCount,
           },
         });
       } else {
         setIsAnalyzing(false);
-        alert("AI Analysis failed to return a session ID.");
+        alert("Analysis failed — no session ID returned.");
       }
-    } catch (error) {
+    } catch (err) {
       setIsAnalyzing(false);
-      console.error(error);
-      alert("Error running AI Analysis: " + error.message);
+      setStatusMessage("");
+      setStatusDetail("");
+      setStatusProgress(null);
+      alert("Error: " + err.message);
     }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <>
-      {/* Full-screen loading overlay — active while backend is processing */}
-      <AnalysisLoadingScreen isActive={isAnalyzing} />
+      <AnalysisLoadingScreen
+        isActive={isAnalyzing}
+        statusMessage={statusMessage}
+        statusDetail={statusDetail}
+        progress={statusProgress}
+      />
 
       <div className="landing-page">
-        {/* Hero */}
+        {/* ── Hero ── */}
         <section className="hero-section">
           <div className="hero-content">
             <div className="hero-badge">
               <FiZap className="badge-icon" />
-              <span>AI-Powered Recruitment</span>
+              AI-Powered Recruitment
             </div>
 
             <h1 className="hero-title">
-              Hire Better Candidates with{" "}
-              <span className="gradient-text">AI Intelligence</span>
+              Hire better with
+              <br />
+              <span className="gradient-text">AI that understands context</span>
             </h1>
 
             <p className="hero-subtitle">
-              Traditional ATS systems reject 75% of qualified candidates based
-              on keyword matching. RedRob uses advanced AI to understand
-              context, skills, and potential — not just keywords.
+              Traditional ATS systems miss 75% of qualified candidates. RedRob
+              evaluates resumes across skills, behaviour, and domain fit — not
+              just keywords.
             </p>
 
             <div className="hero-stats">
@@ -116,102 +160,124 @@ const Landing = () => {
               </div>
               <div className="stat-divider" />
               <div className="stat-item">
-                <span className="stat-value">3x</span>
-                <span className="stat-label">Faster Hiring</span>
+                <span className="stat-value">3×</span>
+                <span className="stat-label">Faster hiring</span>
               </div>
               <div className="stat-divider" />
               <div className="stat-item">
                 <span className="stat-value">+29</span>
-                <span className="stat-label">Avg Score Boost</span>
+                <span className="stat-label">Avg score boost</span>
               </div>
             </div>
           </div>
 
+          {/* Static ranked output preview */}
           <div className="hero-visual">
-            <div className="floating-card card-1">
-              <div className="card-avatar">SC</div>
-              <div className="card-info">
-                <span className="card-name">Sarah Chen</span>
-                <span className="card-score">94</span>
+            <div className="hero-preview-card">
+              <div className="preview-card-header">
+                <span className="preview-card-title">
+                  AI Rankings — Software Engineers
+                </span>
+                <span className="preview-card-badge">Live</span>
               </div>
-            </div>
-            <div className="floating-card card-2">
-              <div className="card-avatar">MR</div>
-              <div className="card-info">
-                <span className="card-name">Marcus Johnson</span>
-                <span className="card-score">87</span>
+
+              <div className="preview-card-rows">
+                {previewCandidates.map((c, i) => (
+                  <div key={i} className="preview-card-row">
+                    <span className="preview-rank">#{i + 1}</span>
+                    <span className="preview-name">{c.name}</span>
+                    <div className="preview-bar-wrap">
+                      <div
+                        className="preview-bar-fill"
+                        style={{ width: `${c.score}%` }}
+                      />
+                    </div>
+                    <span className="preview-score">{c.score}%</span>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="floating-card card-3">
-              <div className="card-avatar">ER</div>
-              <div className="card-info">
-                <span className="card-name">Emily Rodriguez</span>
-                <span className="card-score">91</span>
+
+              <div className="preview-card-footer">
+                5 candidates · Evaluated across 3 AI dimensions
               </div>
             </div>
           </div>
         </section>
 
-        {/* How it works */}
+        {/* ── How it works ── */}
         <section className="how-it-works">
-          <h2 className="section-title">How It Works</h2>
+          <h2 className="section-title">How it works</h2>
           <div className="steps-grid">
             <div className="step-card">
-              <div className="step-number">1</div>
+              <div className="step-number">01</div>
               <FiFileText className="step-icon" />
               <h3>Upload Job Description</h3>
-              <p>Share your job requirements and we'll analyse what makes a candidate successful in this role.</p>
+              <p>
+                Share your role requirements. We parse what makes a candidate
+                succeed here.
+              </p>
             </div>
             <div className="step-card">
-              <div className="step-number">2</div>
+              <div className="step-number">02</div>
               <FiFolder className="step-icon" />
               <h3>Upload Resumes</h3>
-              <p>Submit candidate resumes in any format. Our AI parses and understands each profile deeply.</p>
+              <p>
+                Submit candidate resumes. Our AI parses every profile with full
+                context.
+              </p>
             </div>
             <div className="step-card">
-              <div className="step-number">3</div>
+              <div className="step-number">03</div>
               <FiCpu className="step-icon" />
               <h3>AI Analysis</h3>
-              <p>Our AI evaluates candidates across 5 dimensions: semantic match, skills, behaviour, career growth, and domain expertise.</p>
+              <p>
+                Candidates are evaluated across semantic match, skills,
+                behaviour, and domain expertise.
+              </p>
             </div>
             <div className="step-card">
-              <div className="step-number">4</div>
+              <div className="step-number">04</div>
               <FiCrosshair className="step-icon" />
-              <h3>Get Ranked Results</h3>
-              <p>Receive intelligently ranked candidates with detailed insights and comparison tools.</p>
+              <h3>Ranked Results</h3>
+              <p>
+                Get an intelligently ranked shortlist with full score
+                breakdowns.
+              </p>
             </div>
           </div>
         </section>
 
-        {/* Upload */}
+        {/* ── Upload ── */}
         <section className="upload-section">
-          <h2 className="section-title">Get Started</h2>
-          <div className="upload-container">
+          <h2 className="section-title">Get started</h2>
 
-            {/* JD upload — functional */}
+          <div className="upload-container">
+            {/* JD upload */}
             <div className="upload-card">
               <div className="upload-header">
                 <FiUpload className="upload-icon" />
                 <h3>Job Description</h3>
               </div>
+
               <div
-                className={`upload-area ${uploadStatus.jd ? "uploaded" : ""}`}
+                className={`upload-area${uploadStatus.jd ? " uploaded" : ""}`}
                 onClick={handleJDUploadClick}
               >
                 {uploadStatus.jd ? (
                   <>
                     <FiCheck className="check-icon" />
-                    <span>Job Description Uploaded</span>
+                    <span>Job description ready</span>
                     <span className="upload-hint">{jdFileName}</span>
                   </>
                 ) : (
                   <>
                     <FiFileText className="upload-big-icon" />
-                    <span>Click to upload job description</span>
-                    <span className="upload-hint">Supports .docx</span>
+                    <span>Click to upload</span>
+                    <span className="upload-hint">.docx supported</span>
                   </>
                 )}
               </div>
+
               <input
                 ref={jdInputRef}
                 type="file"
@@ -219,113 +285,108 @@ const Landing = () => {
                 onChange={handleJDFileChange}
                 style={{ display: "none" }}
               />
+
               {uploadStatus.jd && (
                 <div className="jd-preview">
                   <div className="jd-preview-header">
                     <FiFileText className="jd-preview-icon" />
                     <span className="jd-preview-filename">{jdFileName}</span>
-                    <button className="jd-clear-btn" onClick={clearJD} title="Remove file">
+                    <button
+                      className="jd-clear-btn"
+                      onClick={clearJD}
+                      title="Remove"
+                    >
                       <FiX />
                     </button>
                   </div>
-                  <p style={{ margin: "8px 0 0", fontSize: "0.82rem", color: "var(--text-muted, #8892a4)", padding: "0 4px" }}>
-                    ✓ Ready — the backend will parse this file when you start analysis.
-                  </p>
                 </div>
               )}
             </div>
 
-            {/* Resume upload — placeholder only */}
+            {/* Resume — server-side */}
             <div className="upload-card">
               <div className="upload-header">
                 <FiUpload className="upload-icon" />
                 <h3>Candidate Resumes</h3>
               </div>
-              <div className="upload-area">
-                <FiUpload className="upload-big-icon" />
-                <span>Resume upload</span>
+              <div className="upload-area" style={{ cursor: "default" }}>
+                <FiUsers className="upload-big-icon" />
+                <span>Server-side candidates</span>
                 <span className="upload-hint">
-                  Candidates are loaded server-side — no upload needed
+                  Resumes are loaded automatically from the backend
                 </span>
               </div>
-              <input
-                ref={resumeInputRef}
-                type="file"
-                accept=".txt,.pdf,.docx,.doc"
-                multiple
-                style={{ display: "none" }}
-              />
             </div>
           </div>
 
           <button
-            className={`start-analysis-btn ${!uploadStatus.jd ? "disabled" : ""}`}
+            className={`start-analysis-btn${!uploadStatus.jd ? " disabled" : ""}`}
             onClick={handleStartAnalysis}
             disabled={!uploadStatus.jd || isAnalyzing}
           >
             {isAnalyzing ? (
               <>
                 <span className="loading-spinner" />
-                Analyzing with AI...
+                Analyzing…
               </>
             ) : (
               <>
                 <FiPlay className="btn-icon" />
-                Start AI Analysis
+                Run AI Analysis
                 <FiArrowRight className="btn-icon" />
               </>
             )}
           </button>
         </section>
 
-        {/* Features */}
+        {/* ── Features ── */}
         <section className="features-section">
-          <h2 className="section-title">Why RedRob AI?</h2>
+          <h2 className="section-title">Why RedRob</h2>
           <div className="features-grid">
             <div className="feature-card">
               <FiCpu className="feature-icon" />
-              <h3>Semantic Understanding</h3>
-              <p>Understands context and meaning, not just keyword matching.</p>
-            </div>
-            <div className="feature-card">
-              <svg className="feature-icon" viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="2" x2="12" y2="6" />
-                <line x1="8" y1="22" x2="16" y2="22" />
-                <path d="M6 6l-4 10h8L6 6z" />
-                <path d="M18 6l-4 10h8l-4-10z" />
-              </svg>
-              <h3>Fair Evaluation</h3>
-              <p>Reduces bias by focusing on skills and potential rather than pedigree.</p>
-            </div>
-            <div className="feature-card">
-              <FiBarChart2 className="feature-icon" />
-              <h3>Detailed Insights</h3>
-              <p>Get comprehensive breakdowns of each candidate's strengths and areas for growth.</p>
-            </div>
-            <div className="feature-card">
-              <FiSliders className="feature-icon" />
-              <h3>Customizable Weights</h3>
-              <p>Adjust scoring criteria based on your specific hiring priorities.</p>
+              <h3>Semantic understanding</h3>
+              <p>Evaluates context and meaning, not keyword frequency.</p>
             </div>
             <div className="feature-card">
               <FiUsers className="feature-icon" />
-              <h3>Candidate Comparison</h3>
-              <p>Side-by-side comparison tools to make informed decisions.</p>
+              <h3>Fair evaluation</h3>
+              <p>Focuses on skills and potential, reducing pedigree bias.</p>
+            </div>
+            <div className="feature-card">
+              <FiBarChart2 className="feature-icon" />
+              <h3>Score breakdowns</h3>
+              <p>Detailed per-dimension analysis for every candidate.</p>
+            </div>
+            <div className="feature-card">
+              <FiSliders className="feature-icon" />
+              <h3>Adjustable weights</h3>
+              <p>Tune scoring criteria to your hiring priorities.</p>
+            </div>
+            <div className="feature-card">
+              <FiUsers className="feature-icon" />
+              <h3>Side-by-side compare</h3>
+              <p>Compare any two candidates across all dimensions.</p>
             </div>
             <div className="feature-card">
               <FiEye className="feature-icon" />
-              <h3>ATS Blindspot Detection</h3>
-              <p>Find great candidates that traditional systems would reject.</p>
+              <h3>ATS blindspot detection</h3>
+              <p>
+                Surfaces qualified candidates that keyword-ATS systems reject.
+              </p>
             </div>
           </div>
         </section>
 
-        {/* CTA */}
+        {/* ── CTA ── */}
         <section className="cta-section">
-          <h2>Ready to Transform Your Hiring?</h2>
-          <p>Join companies that are making smarter hiring decisions with AI.</p>
+          <h2>Ready to hire smarter?</h2>
+          <p>
+            Join teams making better decisions with AI-powered candidate
+            evaluation.
+          </p>
           <button className="cta-button" onClick={() => navigate("/dashboard")}>
-            Go to Dashboard
+            Open Dashboard
             <FiArrowRight className="btn-icon" />
           </button>
         </section>

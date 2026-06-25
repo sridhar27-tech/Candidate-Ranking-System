@@ -2,7 +2,7 @@
 import React from 'react';
 import { FiAlertTriangle, FiRefreshCw } from 'react-icons/fi';
 
-const DEFAULT_WEIGHTS = { semantic: 40, behavioral: 40, platform: 20 };
+const DEFAULT_WEIGHTS = { semantic: 60, behavioral: 20, platform: 20 };
 
 const WeightSliderPanel = ({ weights, onWeightChange, onReset }) => {
   const weightCategories = [

@@ -77,8 +77,8 @@ const CandidateDetail = () => {
   const platform   = bd.stage_3_platform_signals ?? sb.domainExperience ?? 0;
 
   const pipelineStages = [
-    { label: 'Semantic Skill Match',   value: semantic,   weight: '40%', icon: <FiSearch size={15} /> },
-    { label: 'Behavioral STAR Score',  value: behavioral, weight: '40%', icon: <FiCpu size={15} /> },
+    { label: 'Semantic Skill Match',   value: semantic,   weight: '60%', icon: <FiSearch size={15} /> },
+    { label: 'Behavioral STAR Score',  value: behavioral, weight: '20%', icon: <FiCpu size={15} /> },
     { label: 'Platform Signals',       value: platform,   weight: '20%', icon: <FiTrendingUp size={15} /> },
   ];
 
@@ -307,7 +307,7 @@ const CandidateDetail = () => {
                 <div>
                   <h3>AI Pipeline Score Breakdown</h3>
                   <p className="pipeline-subtitle">
-                    Composite: C++ Semantic Engine (40%) + Qwen STAR Numerical Score (40%) + Platform Signals (20%)
+                    Composite: C++ Semantic Engine (60%) + Qwen STAR Numerical Score (20%) + Platform Signals (20%)
                   </p>
                 </div>
               </div>

@@ -74,9 +74,13 @@ const Dashboard = () => {
   });
 
   const initCandidates = (data) => {
-    baseCandidatesRef.current = data;
-    setCandidates(data);
-    const sorted = [...data].sort((a, b) => b.overallScore - a.overallScore);
+    const updatedCandidates = data.map(candidate => {
+      const newScore = api.calculateWeightedScore(candidate, DEFAULT_WEIGHTS);
+      return { ...candidate, overallScore: newScore };
+    });
+    baseCandidatesRef.current = updatedCandidates;
+    setCandidates(updatedCandidates);
+    const sorted = [...updatedCandidates].sort((a, b) => b.overallScore - a.overallScore);
     setTopCandidate(sorted[0] || null);
     setLoading(false);
   };
@@ -117,17 +121,30 @@ const Dashboard = () => {
     setTopCandidate(sorted[0]);
   };
 
-  const handleExportExcel = () => {
+  const handleExportCSV = () => {
     const ranked = [...candidates].sort((a, b) => b.overallScore - a.overallScore);
-    const rows = ranked.map((c, i) => ({
-      'Candidate ID': c.id,
-      Name: c.name,
-      'Score (%)': c.overallScore,
-    }));
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Ranked Candidates');
-    XLSX.writeFile(wb, `ranked_candidates_${Date.now()}.xlsx`);
+
+    // Escape any double-quotes inside a field so the CSV is valid
+    const esc = (val) => String(val ?? '').replace(/"/g, '""');
+
+    // Columns: candidate_id | rank | score | ai_reasoning  (no header row)
+    const csvContent = ranked
+      .map((c, idx) => {
+        const rank      = idx + 1;
+        const insight   = esc(c.reasoning || c.summary || '');
+        return `"${esc(c.id)}","${rank}",${c.overallScore},"${insight}"`;
+      })
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ranked_candidates_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const filteredCandidates = candidates
@@ -191,7 +208,7 @@ const Dashboard = () => {
         <div className="header-actions">
           <button
             className="icon-btn"
-            onClick={handleExportExcel}
+            onClick={handleExportCSV}
           >
             <FiDownload className="btn-icon" />
             <span>Export Results</span>
@@ -369,9 +386,9 @@ const Dashboard = () => {
         const getColor = (v) => v >= 80 ? '#10b981' : v >= 60 ? '#3b82f6' : v >= 40 ? '#f59e0b' : '#ef4444';
 
         const stages = [
-          { label: 'Semantic Skill Match', key: 'stage_1', value: semantic,   weight: '40%', icon: <FiSearch size={16}/> },
-          { label: 'Behavioral STAR Score', key: 'stage_2', value: behavioral, weight: '40%', icon: <FiCpu size={16}/> },
-          { label: 'Platform Signals',      key: 'stage_3', value: platform,   weight: '20%', icon: <FiTrendingUp size={16}/> },
+          { label: 'Semantic Skill Match', key: 'stage_1', value: semantic,   weight: `${weights.semantic}%`, icon: <FiSearch size={16}/> },
+          { label: 'Behavioral STAR Score', key: 'stage_2', value: behavioral, weight: `${weights.behavioral}%`, icon: <FiCpu size={16}/> },
+          { label: 'Platform Signals',      key: 'stage_3', value: platform,   weight: `${weights.platform}%`, icon: <FiTrendingUp size={16}/> },
         ];
 
         return (
@@ -426,7 +443,7 @@ const Dashboard = () => {
                 </div>
 
                 <p className="modal-engine-note">
-                  Scoring pipeline: C++ semantic engine (40%) + Qwen STAR numerical score (40%) + Platform signals (20%)
+                  Scoring pipeline: C++ semantic engine ({weights.semantic}%) + Qwen STAR numerical score ({weights.behavioral}%) + Platform signals ({weights.platform}%)
                 </p>
               </div>
             </div>

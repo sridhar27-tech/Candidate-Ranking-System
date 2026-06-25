@@ -60,10 +60,10 @@ def main():
         try:
             from fastapi.testclient import TestClient
             from main import app
-            client = TestClient(app)
-            response = client.post("/api/rank/evaluate", json=payload)
-            response_code = response.status_code
-            response_data = response.json()
+            with TestClient(app) as client:
+                response = client.post("/api/rank/evaluate", json=payload)
+                response_code = response.status_code
+                response_data = response.json()
         except Exception as e:
             print(f"Standalone mode failed: {e}", file=sys.stderr)
             sys.exit(1)

@@ -1,0 +1,40 @@
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+ENV/
+
+# Pre-compiled Windows binary (Docker builds Linux .so from source)
+*.pyd
+*.dll
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test & dev files
+tests.txt
+test.py
+evaluate_sample.py
+
+# Dataset (mounted as a volume at runtime, not baked into the image)
+data/
+dataset/
+
+# Environment files (never bake secrets into images)
+.env
+.env.*
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore

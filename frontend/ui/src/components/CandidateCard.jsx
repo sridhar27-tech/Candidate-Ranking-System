@@ -1,49 +1,45 @@
-// CandidateCard component - Displays candidate summary with score
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { FiMapPin, FiBriefcase, FiArrowRight, FiCpu } from 'react-icons/fi';
+import React from "react";
+import { Link } from "react-router-dom";
+import { FiMapPin, FiBriefcase, FiArrowRight, FiCpu } from "react-icons/fi";
+
+const getScoreColor = (score) => {
+  if (score >= 90) return "#22c55e";
+  if (score >= 75) return "#6366f1";
+  if (score >= 60) return "#f59e0b";
+  return "#ef4444";
+};
+
+const getRankLabel = (r) => {
+  if (r === 1) return "🥇 #1";
+  if (r === 2) return "🥈 #2";
+  if (r === 3) return "🥉 #3";
+  return `#${r}`;
+};
 
 const CandidateCard = ({ candidate, rank, sessionId, onViewInsights }) => {
-  // Determine score color based on overall score
-  const getScoreColor = (score) => {
-    if (score >= 90) return '#10b981'; // Green
-    if (score >= 80) return '#3b82f6'; // Blue
-    if (score >= 70) return '#f59e0b'; // Orange
-    return '#ef4444'; // Red
-  };
-
   const scoreColor = getScoreColor(candidate.overallScore);
-
-  const getRankLabel = (r) => {
-    if (r === 1) return '🥇';
-    if (r === 2) return '🥈';
-    if (r === 3) return '🥉';
-    return `#${r}`;
-  };
+  const detailPath = sessionId
+    ? `/candidate/${sessionId}/${candidate.id}`
+    : `/candidate/${candidate.id}`;
 
   return (
     <div className="candidate-card">
-      {/* Rank Badge */}
-      {rank != null && (
-        <div className="rank-badge" title={`Rank #${rank}`}>
-          {getRankLabel(rank)}
-        </div>
-      )}
+      {rank != null && <div className="rank-badge">{getRankLabel(rank)}</div>}
 
-      {/* Score Badge */}
-      <div 
-        className="score-badge"
-        style={{ backgroundColor: scoreColor }}
-      >
-        <span className="score-value">{candidate.overallScore}</span>
+      <div className="score-badge">
+        <span className="score-value" style={{ color: scoreColor }}>
+          {candidate.overallScore}
+        </span>
         <span className="score-label">Match</span>
       </div>
 
-      {/* Card Content */}
       <div className="card-content">
         <div className="card-header">
           <div className="candidate-avatar">
-            {candidate.name.split(' ').map(n => n[0]).join('')}
+            {candidate.name
+              .split(" ")
+              .map((n) => n[0])
+              .join("")}
           </div>
           <div className="candidate-info">
             <h3 className="candidate-name">{candidate.name}</h3>
@@ -52,37 +48,83 @@ const CandidateCard = ({ candidate, rank, sessionId, onViewInsights }) => {
         </div>
 
         <div className="card-details">
-          <div className="detail-item">
-            <FiMapPin className="detail-icon" />
-            <span>{candidate.location}</span>
-          </div>
-          <div className="detail-item">
-            <FiBriefcase className="detail-icon" />
-            <span>{candidate.experience} experience</span>
-          </div>
-        </div>
-
-        {/* Skills Preview */}
-        <div className="skills-preview">
-          {candidate.skills.slice(0, 5).map((skill, index) => (
-            <span key={index} className="skill-tag">
-              {skill}
-            </span>
-          ))}
-          {candidate.skills.length > 5 && (
-            <span className="skill-tag more">
-              +{candidate.skills.length - 5} more
-            </span>
+          {candidate.location && (
+            <div className="detail-item">
+              <FiMapPin className="detail-icon" />
+              <span>{candidate.location}</span>
+            </div>
+          )}
+          {candidate.experience && (
+            <div className="detail-item">
+              <FiBriefcase className="detail-icon" />
+              <span>{candidate.experience}</span>
+            </div>
           )}
         </div>
 
-        <div className="card-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', width: '100%' }}>
-          <button onClick={onViewInsights} className="view-details-btn" style={{ flex: 1, background: 'var(--murray-accent)', color: 'white', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-md)' }}>
-            <FiCpu style={{marginRight: '4px'}} /> View Insights
+        {candidate.skills.length > 0 && (
+          <div className="skills-preview">
+            {candidate.skills.slice(0, 5).map((skill, i) => (
+              <span key={i} className="skill-tag">
+                {skill}
+              </span>
+            ))}
+            {candidate.skills.length > 5 && (
+              <span className="skill-tag more">
+                +{candidate.skills.length - 5}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div
+          className="card-actions"
+          style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
+        >
+          <button
+            onClick={onViewInsights}
+            className="view-details-btn"
+            style={{
+              flex: 1,
+              background: "var(--accent)",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: "var(--radius-sm)",
+              padding: "0.5rem 0.875rem",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.35rem",
+            }}
+          >
+            <FiCpu style={{ fontSize: "0.95rem" }} />
+            Insights
           </button>
-          <Link to={sessionId ? `/candidate/${sessionId}/${candidate.id}` : `/candidate/${candidate.id}`} className="view-details-btn" style={{ flex: 1, textAlign: 'center', background: 'transparent', color: 'var(--murray-accent)', border: '1px solid var(--murray-accent)' }}>
-            View Details
-            <FiArrowRight className="btn-icon" style={{ marginLeft: '4px' }} />
+          <Link
+            to={detailPath}
+            className="view-details-btn"
+            style={{
+              flex: 1,
+              background: "var(--elevated)",
+              color: "var(--text-1)",
+              border: "1px solid var(--border)",
+              cursor: "pointer",
+              borderRadius: "var(--radius-sm)",
+              padding: "0.5rem 0.875rem",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.35rem",
+              textDecoration: "none",
+            }}
+          >
+            Details
+            <FiArrowRight style={{ fontSize: "0.875rem" }} />
           </Link>
         </div>
       </div>

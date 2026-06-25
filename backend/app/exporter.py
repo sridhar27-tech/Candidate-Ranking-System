@@ -21,7 +21,7 @@ def generate_leaderboard_excel(document: dict) -> io.BytesIO:
             "Stage 1: Core C++ Skill Match": breakdown.get("stage_1_skills_semantic"),
             "Stage 2: Behavioral STAR Score": breakdown.get("stage_2_behavioral_star"),
             "Stage 3: Platform Telemetry Signals": breakdown.get("stage_3_platform_signals"),
-            "Multi-Agent AI Justification Notes": candidate.get("ai_justification")
+            "Multi-Agent AI Justification Notes": candidate.get("reasoning") or candidate.get("ai_justification") or candidate.get("ai_reasoning") or ""
         })
         
     # 2. Compile row structures into a Pandas DataFrame Matrix
@@ -66,7 +66,7 @@ def generate_leaderboard_csv(document: dict) -> io.BytesIO:
         text_buffer,
         fieldnames=["candidate_id", "rank", "score", "ai_reasoning"],
     )
-    writer.writeheader()
+    # No header row - data starts at row 1
 
     for index, candidate in enumerate(rankings_list, start=1):
         if index <= TOP_N:

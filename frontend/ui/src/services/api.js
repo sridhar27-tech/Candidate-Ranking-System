@@ -1,5 +1,7 @@
 // API Service for RedRob AI Recruiter
-const BASE_URL = 'http://localhost:8000';
+// VITE_API_URL is injected at build time via Docker build-arg / .env
+// Falls back to localhost:8000 for local dev without Docker
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // ---------------------------------------------------------------------------
 // Shape helper: map a ranked result from the backend into what the UI expects
@@ -84,8 +86,8 @@ export const calculateWeightedScore = (candidate, weights) => {
   const behavioral = bd.stage_2_behavioral_star  ?? sb.behavioralMatch  ?? 0;
   const platform   = bd.stage_3_platform_signals ?? sb.domainExperience ?? 0;
 
-  const wSem  = (weights.semantic   ?? 40) / 100;
-  const wBeh  = (weights.behavioral ?? 40) / 100;
+  const wSem  = (weights.semantic   ?? 60) / 100;
+  const wBeh  = (weights.behavioral ?? 20) / 100;
   const wPlat = (weights.platform   ?? 20) / 100;
   const total  = wSem + wBeh + wPlat || 1;
 
@@ -114,18 +116,26 @@ export const uploadResumes      = async (files) => ({
 // runAIAnalysis — the main pipeline
 //
 // Flow:
-//   1. POST jdFile to /api/jd/parse  → get parsed_jd JSON
-//   2. POST parsed_jd to /api/rank/start → backend ranks its pre-loaded
-//      candidate pool and returns the top-100
-//   3. Return session_id + rankings to the caller
+//   1. Generate a job_id for SSE progress tracking
+//   2. POST jdFile to /api/jd/parse  → get parsed_jd JSON
+//   3. POST { ...parsedJD, job_id } to /api/rank/start → backend runs the
+//      cascade funnel against its pre-loaded candidate pool and returns top-100
 //
 // The candidate dataset NEVER touches the frontend.
-// The resume upload on the landing page is a placeholder UI only.
+// Call getProgressUrl(job_id) to get the SSE stream URL for live tracking.
 // ---------------------------------------------------------------------------
-export const runAIAnalysis = async (jdFile) => {
+
+export const getProgressUrl = (jobId) => `${BASE_URL}/api/progress/${jobId}`;
+
+export const runAIAnalysis = async (jdFile, onJobId, onProgress) => {
   if (!jdFile) {
     throw new Error('Please upload a Job Description (.docx) file to begin analysis.');
   }
+
+  // Generate a stable job_id before the request so the SSE stream can be
+  // opened immediately — the backend will write progress to it.
+  const jobId = crypto.randomUUID();
+  if (onJobId) onJobId(jobId);
 
   // ── Step 1: Parse the .docx into structured JD JSON ──────────────────────
   const formData = new FormData();
@@ -134,7 +144,6 @@ export const runAIAnalysis = async (jdFile) => {
   const parseRes = await fetch(`${BASE_URL}/api/jd/parse`, {
     method: 'POST',
     body: formData,
-    // Do NOT set Content-Type — browser sets multipart boundary automatically
   });
 
   if (!parseRes.ok) {
@@ -144,25 +153,62 @@ export const runAIAnalysis = async (jdFile) => {
 
   const { parsed_jd: parsedJD } = await parseRes.json();
 
-  // ── Step 2: Trigger ranking against the server-loaded candidate pool ──────
+  // ── Step 2: Fire ranking (returns immediately, runs in background) ───────
   const rankRes = await fetch(`${BASE_URL}/api/rank/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(parsedJD),
+    body: JSON.stringify({ ...parsedJD, job_id: jobId }),
   });
 
   if (!rankRes.ok) {
     const err = await rankRes.text();
-    throw new Error(`Ranking failed: ${err}`);
+    throw new Error(`Ranking failed to start: ${err}`);
   }
 
-  const result = await rankRes.json();
+  // ── Step 3: Wait for SSE to report done + session_id ─────────────────────
+  const sessionId = await new Promise((resolve, reject) => {
+    const url = getProgressUrl(jobId);
+    const es = new EventSource(url);
+
+    es.onmessage = (e) => {
+      try {
+        const snap = JSON.parse(e.data);
+        if (onProgress) onProgress(snap);
+
+        if (snap.done) {
+          es.close();
+          if (snap.stage === 'error') {
+            reject(new Error(snap.detail || 'Ranking pipeline failed.'));
+          } else if (snap.session_id) {
+            resolve(snap.session_id);
+          } else {
+            reject(new Error('Ranking completed but no session ID was returned.'));
+          }
+        }
+      } catch (_) {}
+    };
+
+    es.onerror = () => {
+      es.close();
+      reject(new Error('Lost connection to progress stream.'));
+    };
+  });
+
+  // ── Step 4: Fetch ranked results from leaderboard ────────────────────────
+  const lbRes = await fetch(`${BASE_URL}/api/rank/leaderboard/${sessionId}`);
+  if (!lbRes.ok) {
+    const err = await lbRes.text();
+    throw new Error(`Failed to load results: ${err}`);
+  }
+
+  const result = await lbRes.json();
 
   return {
-    success:      true,
-    session_id:   result.session_id,
+    success:       true,
+    job_id:        jobId,
+    session_id:    sessionId,
     analyzedCount: result.total_processed,
-    rankings:     result.rankings,
+    rankings:      result.rankings,
     parsedJD,
   };
 };
@@ -177,5 +223,6 @@ export default {
   uploadJobDescription,
   uploadResumes,
   runAIAnalysis,
+  getProgressUrl,
 };
 

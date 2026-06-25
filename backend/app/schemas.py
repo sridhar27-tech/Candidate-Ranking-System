@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
-from typing import Any, List, Dict, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, List, Dict, Optional, Union
+
 
 class SalaryRangeModel(BaseModel):
     min: float
     max: float
+
 
 class RedRobSignalsModel(BaseModel):
     profile_completeness_score: float
@@ -35,6 +36,7 @@ class RedRobSignalsModel(BaseModel):
 # =====================================================================
 # CORE CANDIDATE PROFILE & LIFECYCLE SCHEMAS
 # =====================================================================
+
 class ProfileDetailsModel(BaseModel):
     anonymized_name: str
     headline: str
@@ -47,6 +49,7 @@ class ProfileDetailsModel(BaseModel):
     current_company_size: Optional[str] = None
     current_industry: Optional[str] = None
 
+
 class CareerHistoryModel(BaseModel):
     company: str
     title: str
@@ -58,6 +61,7 @@ class CareerHistoryModel(BaseModel):
     company_size: Optional[str] = None
     description: str
 
+
 class EducationModel(BaseModel):
     institution: str
     degree: str
@@ -66,6 +70,7 @@ class EducationModel(BaseModel):
     end_year: int
     grade: Optional[str] = None
     tier: Optional[str] = "tier_4"
+
 
 class SkillModel(BaseModel):
     name: str
@@ -77,19 +82,23 @@ class SkillModel(BaseModel):
 # =====================================================================
 # MAIN PIPELINE INPUT SCHEMA
 # =====================================================================
+
 class CandidateModel(BaseModel):
     candidate_id: str
     profile: ProfileDetailsModel
     career_history: List[CareerHistoryModel]
     education: List[EducationModel]
     skills: List[SkillModel]
-    certifications: List[str] = Field(default_factory=list)
+    certifications: List[Any] = Field(default_factory=list)   # str or {name,issuer,year}
     languages: List[Dict[str, str]] = Field(default_factory=list)
-    redrob_signals: RedRobSignalsModel  # Phase 3 data contract binding
+    redrob_signals: RedRobSignalsModel
 
-    certifications: List[Any] = Field(default_factory=list)  # supports str or {name,issuer,year} objects
-    languages: List[Dict[str, str]] = Field(default_factory=list)
-    redrob_signals: RedRobSignalsModel  # Phase 3 data contract binding
+
+# =====================================================================
+# JOB DESCRIPTION INPUT SCHEMA
+# Accepts detailed_responsibilities as either a string or a list of
+# strings (LLMs sometimes return a list) and coerces to a single string.
+# =====================================================================
 
 class JobDescriptionInput(BaseModel):
     """Structured JD produced by the parser pipeline."""
@@ -98,7 +107,36 @@ class JobDescriptionInput(BaseModel):
     experience_required: str = "Unknown"
     core_technical_skills: List[str] = Field(default_factory=list)
     behavioral_competencies: List[str] = Field(default_factory=list)
-    detailed_responsibilities: str = "Unknown"
+    detailed_responsibilities: Union[str, List[str]] = "Unknown"
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_from_string(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return {
+                "detailed_responsibilities": v
+            }
+        return v
+
+    @field_validator("detailed_responsibilities", mode="before")
+    @classmethod
+    def coerce_responsibilities_to_str(cls, v: Any) -> str:
+        """Accept list or string; always store as a single newline-joined string."""
+        if isinstance(v, list):
+            return "\n".join(str(item) for item in v if item)
+        if v is None:
+            return "Unknown"
+        return str(v)
+
+    @field_validator("core_technical_skills", "behavioral_competencies", mode="before")
+    @classmethod
+    def coerce_list_fields(cls, v: Any) -> List[str]:
+        """If the LLM returns a plain string for a list field, wrap it."""
+        if isinstance(v, str):
+            return [v] if v.strip() else []
+        if v is None:
+            return []
+        return v
 
     def to_evaluation_text(self) -> str:
         """Condense structured JD into a focused text string for semantic embedding."""
@@ -110,8 +148,9 @@ class JobDescriptionInput(BaseModel):
         ]
         if skills_text:
             parts.append(f"Required skills: {skills_text}.")
-        if self.detailed_responsibilities and self.detailed_responsibilities != "Unknown":
-            parts.append(f"Responsibilities: {self.detailed_responsibilities}")
+        responsibilities = self.detailed_responsibilities
+        if responsibilities and responsibilities != "Unknown":
+            parts.append(f"Responsibilities: {responsibilities}")
         return " ".join(parts)
 
 
