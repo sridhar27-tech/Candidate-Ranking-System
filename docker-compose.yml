@@ -1,48 +1,25 @@
-# ============================================================================
-# RedRob AI Recruiter — Docker Compose
-#
-# Services:
-#   backend  — FastAPI + C++ Ranker + sentence-transformers (port 8000)
-#   frontend — React SPA via nginx (port 3000)
-#   ollama   — Local LLM for Stage 2 behavioral scoring (port 11434)
-#
-# Usage:
-#   docker compose up --build            # first run — builds all images
-#   docker compose up -d                 # detached (background) mode
-#   docker compose logs -f backend       # tail backend logs
-#   docker compose down                  # stop and remove containers
-#   docker compose down -v               # also remove named volumes
-# ============================================================================
+version: '3.8'
 
 services:
-
-  # ── Ollama: Local LLM runtime ───────────────────────────────────────────
   ollama:
-    image: ollama/ollama:latest
+    build:
+      context: ./ollama
+      dockerfile: Dockerfile
     container_name: redrob-ollama
     restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
-      - ollama-data:/root/.ollama        # persists downloaded models across restarts
+      - ollama-data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
-    # Pull qwen2.5:3b on first run using an init container via entrypoint script
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        ollama serve &
-        sleep 5
-        ollama pull qwen2.5:3b
-        wait
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s   # allow time for model pull on first run
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 90s  # Gives plenty of time for the initial model pull if running on CPU
 
-  # ── Backend: FastAPI Inverted Cascade Funnel ────────────────────────────
   backend:
     build:
       context: ./backend
@@ -52,7 +29,6 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Mount the candidate dataset at runtime — keeps the image data-agnostic
       - ./backend/data:/app/data:ro
     environment:
       - OLLAMA_URL=http://ollama:11434/api/generate
@@ -62,19 +38,16 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
 
-  # ── Frontend: React SPA served via nginx ────────────────────────────────
   frontend:
     build:
       context: ./frontend/ui
       dockerfile: Dockerfile
       args:
-        # When running in Docker, the browser talks to the backend via the host machine.
-        # Use the host's mapped port so requests reach the backend container.
         VITE_API_URL: http://localhost:8000
     container_name: redrob-frontend
     restart: unless-stopped
@@ -83,8 +56,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-# ── Named Volumes ────────────────────────────────────────────────────────
 volumes:
   ollama-data:
     driver: local

@@ -91,7 +91,10 @@ export const calculateWeightedScore = (candidate, weights) => {
   const wPlat = (weights.platform   ?? 20) / 100;
   const total  = wSem + wBeh + wPlat || 1;
 
-  return Math.round(((semantic * wSem) + (behavioral * wBeh) + (platform * wPlat)) / total);
+  // Return the float value with full precision. This ensures that the position-based
+  // tie-breaker offsets baked into the breakdown scores are preserved.
+  const rawWeighted = ((semantic * wSem) + (behavioral * wBeh) + (platform * wPlat)) / total;
+  return Number(rawWeighted.toFixed(4));
 };
 
 // ---------------------------------------------------------------------------

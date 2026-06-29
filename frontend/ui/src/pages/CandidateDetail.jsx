@@ -141,7 +141,7 @@ const CandidateDetail = () => {
                 }}
               >
                 <div className="score-content">
-                  <span className="score-number" style={{ color: scoreColor }}>{candidate.overallScore}</span>
+                  <span className="score-number" style={{ color: scoreColor }}>{Number(candidate.overallScore).toFixed(1)}</span>
                   <span className="score-text">AI Score</span>
                 </div>
               </div>
@@ -151,7 +151,7 @@ const CandidateDetail = () => {
                 <span className="ats-value">{candidate.atsScore}%</span>
                 <span className={`difference ${candidate.overallScore >= candidate.atsScore ? 'positive' : 'negative'}`}>
                   {candidate.overallScore >= candidate.atsScore ? '+' : ''}
-                  {candidate.overallScore - candidate.atsScore}% AI Boost
+                  {Number(candidate.overallScore - candidate.atsScore).toFixed(1)}% AI Boost
                 </span>
               </div>
             </div>
@@ -321,7 +321,7 @@ const CandidateDetail = () => {
                   }}
                 >
                   <span className="pipeline-ring-inner" style={{ color: scoreColor }}>
-                    {candidate.overallScore}
+                    {Number(candidate.overallScore).toFixed(1)}
                   </span>
                 </div>
                 <div className="pipeline-overall-text">

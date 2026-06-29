@@ -101,7 +101,7 @@ const CandidateComparison = ({ candidate1, candidate2 }) => {
           <h3>{candidate1.name}</h3>
           <div className="score-display">
             <span className="overall-score" style={{ color: getScoreColor(candidate1.overallScore) }}>
-              {candidate1.overallScore}
+              {Number(candidate1.overallScore).toFixed(1)}
             </span>
             <span className="score-label">Overall Match</span>
           </div>
@@ -117,7 +117,7 @@ const CandidateComparison = ({ candidate1, candidate2 }) => {
           <h3>{candidate2.name}</h3>
           <div className="score-display">
             <span className="overall-score" style={{ color: getScoreColor(candidate2.overallScore) }}>
-              {candidate2.overallScore}
+              {Number(candidate2.overallScore).toFixed(1)}
             </span>
             <span className="score-label">Overall Match</span>
           </div>
@@ -147,10 +147,10 @@ const CandidateComparison = ({ candidate1, candidate2 }) => {
         <div className="comparison-row">
           <div className="comparison-label">Overall AI Score</div>
           <div className="comparison-value" style={{ fontWeight: 'bold', color: getScoreColor(candidate1.overallScore) }}>
-            {candidate1.overallScore}%
+            {Number(candidate1.overallScore).toFixed(1)}%
           </div>
           <div className="comparison-value" style={{ fontWeight: 'bold', color: getScoreColor(candidate2.overallScore) }}>
-            {candidate2.overallScore}%
+            {Number(candidate2.overallScore).toFixed(1)}%
           </div>
         </div>
 

@@ -127,20 +127,22 @@ const Dashboard = () => {
     // Escape any double-quotes inside a field so the CSV is valid
     const esc = (val) => String(val ?? '').replace(/"/g, '""');
 
-    // Columns: candidate_id | rank | score | ai_reasoning  (no header row)
-    const csvContent = ranked
-      .map((c, idx) => {
-        const rank      = idx + 1;
-        const insight   = esc(c.reasoning || c.summary || '');
-        return `"${esc(c.id)}","${rank}",${c.overallScore},"${insight}"`;
-      })
-      .join("\n");
+    // Columns: candidate_id,rank,score,reasoning (with header row as per validate_submission.py)
+    const header = "candidate_id,rank,score,reasoning";
+    const rows = ranked.map((c, idx) => {
+      const rank = idx + 1;
+      // Keep full float precision (4 decimals max from backend tie-breaker)
+      const score = Number(c.overallScore).toFixed(4);
+      const insight = esc(c.reasoning || c.summary || '');
+      return `"${esc(c.id)}","${rank}",${score},"${insight}"`;
+    });
 
+    const csvContent = [header, ...rows].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `ranked_candidates_${Date.now()}.csv`);
+    link.setAttribute("download", "team_viltrumites.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -241,7 +243,7 @@ const Dashboard = () => {
                 <div className="stats-row">
                   <span className="stat"><FiMapPin style={{marginRight: '4px'}} /> {topCandidate.location}</span>
                   <span className="stat"><FiBriefcase style={{marginRight: '4px'}} /> {topCandidate.experience}</span>
-                  <span className="stat"><FiCrosshair style={{marginRight: '4px'}} /> {topCandidate.overallScore}% Match</span>
+                  <span className="stat"><FiCrosshair style={{marginRight: '4px'}} /> {Number(topCandidate.overallScore).toFixed(1)}% Match</span>
                 </div>
                 <div className="action-row" style={{ marginTop: '1rem' }}>
                   <button 
@@ -257,7 +259,7 @@ const Dashboard = () => {
               <div className="score-circle" style={{ 
                 background: `conic-gradient(#10b981 ${topCandidate.overallScore}%, #374151 ${topCandidate.overallScore}%)` 
               }}>
-                <span className="score-inner">{topCandidate.overallScore}</span>
+                <span className="score-inner">{Number(topCandidate.overallScore).toFixed(1)}</span>
               </div>
               <p className="score-label">Overall Score</p>
             </div>

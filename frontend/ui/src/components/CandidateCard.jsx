@@ -28,7 +28,7 @@ const CandidateCard = ({ candidate, rank, sessionId, onViewInsights }) => {
 
       <div className="score-badge">
         <span className="score-value" style={{ color: scoreColor }}>
-          {candidate.overallScore}
+          {Number(candidate.overallScore).toFixed(1)}
         </span>
         <span className="score-label">Match</span>
       </div>

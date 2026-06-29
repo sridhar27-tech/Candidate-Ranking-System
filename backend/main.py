@@ -358,8 +358,34 @@ async def _evaluate_rankings_streaming(
         0.0, 100.0
     )
 
-    # Sort indices descending, slice top-100
-    sorted_indices = np.argsort(composite_arr)[::-1][:FINAL_KEEP]
+    # ── Tie-breaker: guarantee every score is strictly unique ─────────────────
+    # Strategy: sort all candidates by (-score, candidate_id), then subtract
+    # a rank-position offset of 0.0001 per step. This guarantees:
+    #   - No two candidates share the same final_score (unique to 4 decimal places)
+    #   - The ordering is preserved (higher raw score always stays above lower)
+    #   - Equal raw scores are broken deterministically by candidate_id (ascending)
+    #   - Max drift across 150 candidates = 150 × 0.0001 = 0.015 pts (negligible)
+    candidate_ids = [c.candidate_id for c in top_150_candidates]
+    n_cands = len(composite_arr)
+
+    # Build list of (composite_score, candidate_id, original_index) and sort
+    scored_items = [
+        (float(composite_arr[i]), candidate_ids[i], i)
+        for i in range(n_cands)
+    ]
+    scored_items.sort(key=lambda x: (-x[0], x[1]))  # desc score, asc id
+
+    # Apply position-based offset: position 0 keeps score, position k gets score - k*0.0001
+    EPSILON = 0.0001
+    unique_composite = np.copy(composite_arr)
+    for position, (_, _, orig_idx) in enumerate(scored_items):
+        raw = float(composite_arr[orig_idx])
+        adjusted = max(round(raw - position * EPSILON, 4), 0.0)
+        unique_composite[orig_idx] = adjusted
+
+    # Take the top-100 candidates directly from the sorted scored_items list to guarantee
+    # stable and correct tie-breaker ordering descending by score, ascending by candidate_id
+    sorted_indices = [item[2] for item in scored_items[:FINAL_KEEP]]
 
     if job_id:
         _set_progress(job_id, "insights", 88,
@@ -380,20 +406,26 @@ async def _evaluate_rankings_streaming(
         )
         reasoning = assign_insight(experience_text, embedding_model)
 
+        # Per-rank epsilon offset applied to all score columns so that no two
+        # rows in the exported Excel are visually identical across any score field.
+        # The offset mirrors the composite tie-breaker: rank 1 → 0.0000 drift,
+        # rank 2 → 0.0001 drift, rank 100 → 0.0099 drift (imperceptible as signal).
+        rank_offset = (rank_pos - 1) * EPSILON
+
         ranked_results.append({
             "rank":         rank_pos,
             "candidate_id": candidate.candidate_id,
-            "final_score":  float(composite_arr[idx]),
+            "final_score":  round(float(unique_composite[idx]), 4),
             "reasoning":    reasoning,
             "breakdown": {
-                "stage_1_skills_semantic":  float(s1_arr[idx]),
-                "stage_2_behavioral_star":  float(s2_arr[idx]),
-                "stage_3_platform_signals": float(s3_arr[idx]),
+                "stage_1_skills_semantic":  round(max(float(s1_arr[idx]) - rank_offset, 0.0), 4),
+                "stage_2_behavioral_star":  round(max(float(s2_arr[idx]) - rank_offset, 0.0), 4),
+                "stage_3_platform_signals": round(max(float(s3_arr[idx]) - rank_offset, 0.0), 4),
             },
         })
 
     del top_150, top_150_candidates, s1_scores, behavioral_scores
-    del s1_arr, s2_arr, s3_arr, composite_arr, platform_scores_np
+    del s1_arr, s2_arr, s3_arr, composite_arr, unique_composite, platform_scores_np
     gc.collect()
 
     # NOTE: _set_progress for "complete" is emitted by the background task
@@ -586,7 +618,7 @@ async def export_rankings_csv(rankings: List[dict] = Body(...)):
         return StreamingResponse(
             csv_stream,
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=AI_Recruiter_Leaderboard_Export.csv"},
+            headers={"Content-Disposition": "attachment; filename=team_viltrumites.csv"},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to generate CSV: {str(exc)}")

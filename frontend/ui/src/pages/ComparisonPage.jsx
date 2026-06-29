@@ -139,7 +139,7 @@ const ComparisonPage = () => {
             <option value="">Select Candidate</option>
             {candidates.map(candidate => (
               <option key={candidate.id} value={candidate.id}>
-                {candidate.name} - {candidate.role} ({candidate.overallScore})
+                {candidate.name} - {candidate.role} ({Number(candidate.overallScore).toFixed(1)}%)
               </option>
             ))}
           </select>
@@ -159,7 +159,7 @@ const ComparisonPage = () => {
             <option value="">Select Candidate</option>
             {candidates.map(candidate => (
               <option key={candidate.id} value={candidate.id}>
-                {candidate.name} - {candidate.role} ({candidate.overallScore})
+                {candidate.name} - {candidate.role} ({Number(candidate.overallScore).toFixed(1)}%)
               </option>
             ))}
           </select>
